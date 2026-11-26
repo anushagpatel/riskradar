@@ -1,0 +1,192 @@
+# RiskRadar AI - indicator definitions and heuristic thresholds.
+#
+# IMPORTANT: every threshold below is an illustrative, user-editable heuristic.
+# None of them is a validated financial risk rating, a forecast, or investment advice.
+# Edit freely; the dashboard, alerts and AI context all read from this file.
+#
+# Rule types (all evaluated on the stored series):
+#   level       latest value
+#   change      absolute change over `lookback` observations (same units as the series)
+#   pct_change  percent change over `lookback` observations
+#   yoy         year-over-year percent growth (uses `periods_per_year`)
+#   drawdown    % decline from the trailing-`window_obs` peak (thresholds are negative)
+#   percentile  percentile rank of the latest value within the stored history
+# A rule has `elevated` and `high` thresholds. Direction is "above" (value >= threshold)
+# unless `direction = "below"` (value <= threshold), which `drawdown` uses implicitly.
+
+[meta]
+disclaimer = "Classifications are heuristic research signals derived from configurable thresholds. They are not validated financial risk ratings, forecasts, or investment advice."
+
+[defaults]
+history_start = "2000-01-01"
+
+# ---------------------------------------------------------------- FRED indicators
+
+[indicators.vix]
+label = "CBOE Volatility Index (VIX)"
+category = "Market volatility"
+source = "fred"
+series_id = "VIXCLS"
+unit = "index pts"
+periods_per_year = 252
+change_kind = "pct"
+demo_start = 17.0
+demo_vol = 0.06
+rules = [
+  { type = "level", name = "VIX level", elevated = 20, high = 30 },
+  { type = "percentile", name = "VIX percentile of history", elevated = 80, high = 95, min_obs = 500 },
+]
+
+[indicators.sp500_drawdown]
+label = "S&P 500 index"
+category = "Equity market drawdown"
+source = "fred"
+series_id = "SP500"
+unit = "index"
+periods_per_year = 252
+change_kind = "pct"
+demo_start = 5200.0
+demo_vol = 0.01
+rules = [
+  { type = "drawdown", name = "Drawdown from trailing 1-year peak (%)", window_obs = 252, elevated = -10, high = -20 },
+]
+
+[indicators.hy_oas]
+label = "ICE BofA US High Yield OAS"
+category = "Corporate credit spreads"
+source = "fred"
+series_id = "BAMLH0A0HYM2"
+unit = "%"
+periods_per_year = 252
+change_kind = "abs"
+demo_start = 3.2
+demo_vol = 0.02
+rules = [
+  { type = "level", name = "HY spread level (%)", elevated = 5.0, high = 7.0 },
+  { type = "change", name = "HY spread widening over 20 obs (pp)", lookback = 20, elevated = 0.75, high = 1.5 },
+]
+
+[indicators.fed_funds]
+label = "Effective federal funds rate"
+category = "Interest rates"
+source = "fred"
+series_id = "FEDFUNDS"
+unit = "%"
+periods_per_year = 12
+change_kind = "abs"
+demo_start = 4.0
+demo_vol = 0.03
+rules = [
+  { type = "change", name = "12-month change in policy rate (pp)", lookback = 12, elevated = 1.0, high = 2.0 },
+]
+
+[indicators.ust_10y]
+label = "10-year Treasury yield"
+category = "Interest rates"
+source = "fred"
+series_id = "DGS10"
+unit = "%"
+periods_per_year = 252
+change_kind = "abs"
+demo_start = 4.2
+demo_vol = 0.01
+rules = [
+  { type = "change", name = "Rise over 60 obs (pp)", lookback = 60, elevated = 0.5, high = 1.0 },
+]
+
+[indicators.ust_2y]
+label = "2-year Treasury yield"
+category = "Interest rates"
+source = "fred"
+series_id = "DGS2"
+unit = "%"
+periods_per_year = 252
+change_kind = "abs"
+demo_start = 3.8
+demo_vol = 0.01
+rules = [
+  { type = "change", name = "Rise over 60 obs (pp)", lookback = 60, elevated = 0.5, high = 1.0 },
+]
+
+[indicators.bank_loans]
+label = "Loans and leases in bank credit, all commercial banks"
+category = "Bank lending"
+source = "fred"
+series_id = "TOTLL"
+unit = "$bn"
+periods_per_year = 52
+change_kind = "pct"
+demo_start = 14000.0
+demo_vol = 0.002
+rules = [
+  { type = "yoy", name = "Year-over-year growth (%)", elevated = 10, high = 15 },
+]
+
+[indicators.ndfi_loans]
+label = "Bank loans to nondepository financial institutions (NDFIs)"
+category = "NDFI lending growth"
+source = "fred"
+series_id = "LNFACBM027SBOG"
+unit = "$bn"
+periods_per_year = 12
+change_kind = "pct"
+demo_start = 1800.0
+demo_vol = 0.015
+rules = [
+  { type = "yoy", name = "Year-over-year growth (%)", elevated = 15, high = 25 },
+]
+
+[indicators.ag_delinquency]
+label = "Delinquency rate, loans to finance agricultural production"
+category = "Agricultural lending stress"
+source = "fred"
+series_id = "DRFAPGACBS"
+history_start = "1987-01-01"
+unit = "%"
+periods_per_year = 4
+change_kind = "abs"
+demo_start = 1.1
+demo_vol = 0.05
+rules = [
+  { type = "percentile", name = "Percentile of history since 1987", elevated = 80, high = 95, min_obs = 40 },
+  { type = "change", name = "Change over 4 quarters (pp)", lookback = 4, elevated = 0.5, high = 1.0 },
+]
+
+# ---------------------------------------------------------------- OFR hedge fund monitor
+# The mnemonic is resolved at runtime from the OFR metadata search (see riskradar/ofr.py)
+# unless OFR_LEVERAGE_MNEMONIC is set in .env. The resolved mnemonic and series name are
+# shown on the Methodology tab so you can audit the choice.
+
+[indicators.hf_leverage]
+label = "Hedge fund leverage (OFR / SEC Form PF)"
+category = "Hedge fund leverage"
+source = "ofr"
+unit = "ratio"
+periods_per_year = 4
+change_kind = "pct"
+demo_start = 8.0
+demo_vol = 0.03
+rules = [
+  { type = "pct_change", name = "Change over 4 quarters (%)", lookback = 4, elevated = 10, high = 20 },
+]
+
+[ofr]
+search_query = "*leverage*"
+name_must_contain = ["leverage"]
+mnemonic_prefix = "FPF-ALLQHF"
+
+# ---------------------------------------------------------------- SEC EDGAR / AI financing
+
+[ai_financing]
+category = "AI financing"
+tickers = ["MSFT", "GOOGL", "AMZN", "META", "NVDA"]
+
+[ai_financing.capex_to_ocf]
+name = "Capex / operating cash flow"
+elevated = 0.75
+high = 1.0
+
+[ai_financing.debt_growth]
+name = "Year-over-year debt growth (%)"
+elevated = 25
+high = 50
