@@ -1,110 +1,102 @@
-# 📡 RiskRadar AI: Market & Credit Risk Intelligence
+# 📡 RiskRadar AI
 
-RiskRadar AI is a research dashboard that pulls public financial data, flags indicators that move outside their normal range, and uses an AI model to explain what the signals mean. It covers market volatility, credit spreads, interest rates, equities, AI-company financing, hedge fund leverage, farm lending, lending to non-bank financial institutions (NDFIs) and bank lending.
+A dashboard I built to keep an eye on market and credit risk using public financial data. It pulls numbers from FRED, SEC filings, the OFR and the Fed, checks each indicator against a set of thresholds, and flags anything that looks off. There's also an AI assistant on top that can explain what's going on, but it only works from the data the app has already pulled and calculated. It doesn't make up numbers.
 
-> **Research support only.** RiskRadar does not give investment advice and does not predict financial crises. Classifications are heuristic signals from configurable thresholds, not validated risk ratings.
+Right now it tracks 20 indicators across 9 areas: market volatility, credit spreads, interest rates, equities, AI company financing, hedge fund leverage, farm lending, bank lending to non-bank lenders (NDFIs), and overall bank lending.
 
-![Overview](docs/screenshots/overview.png)
+It's a research tool, not investment advice, and it doesn't try to predict crises.
 
----
+## Where the data comes from
 
-## Features
+Everything is from free, official sources. Every indicator in the app links back to where it came from and shows the date of the latest reading.
 
-- **Live risk overview**: 20 indicators across 9 risk areas, each classified as Normal, Elevated or High from its own thresholds. There is no composite score.
-- **Automatic data loading**: data refreshes on page open when it's more than 6 hours old, so the dashboard is ready without any clicks.
-- **Threshold alerts**: every threshold crossing is recorded with the value, trigger rule, observation date and source link.
-- **AI briefing**: a structured written assessment built only from the calculated metrics, alerts and Federal Reserve report excerpts.
-- **Research assistant**: a chat window that answers questions about the current data and cites its evidence.
-- **Stress testing**: deterministic what-if scenarios for hedge fund leverage, NDFI credit losses, AI-company debt service and farm loan delinquencies.
-- **Hallucination guards**: the app warns when an AI answer cites evidence that doesn't exist or uses numbers that aren't in the supplied data.
+| Source | Who publishes it | What I use from it |
+|---|---|---|
+| [FRED](https://fred.stlouisfed.org/docs/api/fred/) | Federal Reserve Bank of St. Louis | VIX (`VIXCLS`), S&P 500 (`SP500`), high yield spread (`BAMLH0A0HYM2`), fed funds rate (`FEDFUNDS`), 10y and 2y Treasury yields (`DGS10`, `DGS2`), bank loans (`TOTLL`), bank loans to NDFIs (`LNFACBM027SBOG`), farm loan delinquency rate (`DRFAPGACBS`) |
+| [SEC EDGAR](https://www.sec.gov/edgar/sec-api-documentation) | U.S. Securities and Exchange Commission | Debt, operating cash flow and capex from the annual filings of Microsoft, Alphabet, Amazon, Meta and NVIDIA |
+| [OFR Hedge Fund Monitor](https://www.financialresearch.gov/hedge-fund-monitor/) | Office of Financial Research (Treasury) | Hedge fund leverage, from Form PF data |
+| [Financial Stability Report](https://www.federalreserve.gov/publications/financial-stability-report.htm) | Federal Reserve Board | Report text, only used as background for the AI |
 
----
+FRED needs a free API key and the SEC asks for your name and email in the request header. The other two don't need anything. The AI parts run on the OpenAI API.
 
-## Screenshots
+## How I tried to keep it trustworthy
+
+The main rule I followed: the AI explains, Python calculates. All the math (changes, year-over-year growth, percentiles, drawdowns, ratios) is plain Python with unit tests. The model never computes anything itself.
+
+Some other things I put in place:
+
+- If a source fails, the card just says the data is unavailable. Nothing gets estimated or filled in.
+- There's no overall "risk score". Each indicator is judged on its own thresholds, and all of them live in one file (`config/thresholds.toml`) that you can read and change.
+- Every alert shows the exact rule that fired, so you can see why something got flagged.
+- When the AI answers, it has to cite where each point came from. `[M3]` means metric 3, `[A2]` means alert 2, and so on.
+- The app checks every answer afterwards. If the model cites something that doesn't exist, or uses a number that isn't in the data it was given, you get a warning.
+- You can see exactly what was sent to the model for each briefing.
+- Stress test results are always labelled as hypothetical so they don't get mixed up with real data.
+
+On the privacy side, your API keys stay in your local `.env` file (which is gitignored), and they never show up in error messages. Everything is stored in a local SQLite file. The app caches data and only goes back to the APIs when it's more than 6 hours old, and SEC requests are throttled well under their 10 requests/second limit.
+
+## What it looks like
 
 ### Overview
-![Overview](docs/screenshots/overview.png)
+<img width="3420" height="1670" alt="Overview page" src="https://github.com/user-attachments/assets/e7540691-7cf7-4002-ac74-634004ea8fda" />
 
-The home page. The summary card states how many indicators are above their normal range and counts them by status. The colored strip shows every indicator at a glance, grouped by risk area. Below it, each indicator has a card with its latest value, change vs the previous reading, observation date and a trend chart. Charts show a moving average and dashed Elevated/High threshold lines where they apply. You can filter to flagged indicators, narrow by risk area, or sort by severity.
+This is the home page. The top card tells you how many indicators are out of their normal range, and the colored strip shows all 20 at once, grouped by area (red = high, orange = elevated, green = normal). Below that, each indicator gets its own card with the latest value, the change since the last reading, and a chart with the moving average and threshold lines. You can filter to just the flagged ones, pick specific areas, or sort by severity.
 
 ### Alerts
-![Alerts](docs/screenshots/alerts.png)
+<img width="3390" height="1014" alt="Alerts page" src="https://github.com/user-attachments/assets/65ea3c31-a95f-463b-8de4-6520562f1300" />
 
-A log of every threshold crossing. Each row shows the risk area, indicator, current and previous values, the exact rule that triggered, the severity, the observation date and a link to the source data. You can filter by High or Elevated.
+Every time an indicator crosses a threshold it shows up here, with the value, the previous value, which rule triggered it and a link to the source.
 
-### Research assistant
-![Research assistant](docs/screenshots/assistant.png)
+### AI assistant
+<img width="930" height="1220" alt="AI assistant" src="https://github.com/user-attachments/assets/e9f2bfaf-8135-48af-b27f-3d52c4fc8fd7" />
 
-Opens from the **Ask RiskRadar** button in the bottom-right corner, on any tab. Answers are grounded in the app's own data and cite evidence IDs:
-- `[M#]` for metrics
-- `[A#]` for alerts
-- `[R#]` for Fed report excerpts
-- `[S#]` for stress results
+Click "Ask RiskRadar" in the bottom right corner on any page to open the chat. You can ask things like "which indicators are showing stress right now?" and it answers from the current data, with citations.
 
 ### AI briefing
-![AI briefing](docs/screenshots/ai-briefing.png)
+<img width="3198" height="1704" alt="AI briefing" src="https://github.com/user-attachments/assets/73f1877a-20e3-4ec8-99c4-221a6bb3ffb4" />
 
-A one-click written assessment with an executive summary, emerging risk factors, supporting evidence and source references. The model only interprets numbers the app has already calculated. The exact evidence sent to the model can be inspected under **Evidence sent to the model**.
+One click and you get a written summary of where things stand: a short overview, the main risks, the numbers behind them and the sources. You can expand "Evidence sent to the model" to see exactly what it was working from.
 
 ### Stress test
-![Stress test](docs/screenshots/stress-test.png)
+<img width="3198" height="1268" alt="Stress test" src="https://github.com/user-attachments/assets/927ffa31-991e-4867-839c-08d5b044099c" />
 
-Choose a scenario, adjust the assumptions and see hypothetical results immediately. Inputs are prefilled from the latest data where available (here, the latest OFR hedge fund leverage reading). Every calculation is deterministic Python, and **Explain with AI** describes which transmission channels the scenario could activate.
+What-if scenarios. Pick one (hedge fund leverage shock, NDFI credit losses, AI company debt service, or farm loan stress), move the sliders and the results update straight away. Where possible the inputs start from real data. In this screenshot the leverage comes from the latest OFR reading. "Explain with AI" walks through what the result could mean.
 
 ### Data & method
-![Data & method](docs/screenshots/data-method.png)
+<img width="3198" height="1704" alt="Data and method" src="https://github.com/user-attachments/assets/a12260c3-4508-4d30-8f88-db4c014cbde3" />
 
-The status of each data connection, controls to update data or fetch Federal Reserve reports, and plain-language notes on how classifications work and known data limitations. Expanders at the bottom list every threshold rule and the stored series.
-
----
+Shows whether each data source is connected, lets you force an update or pull the latest Fed reports, and explains how the classifications work and where the data has gaps.
 
 ## Tech stack
 
-| Layer | Technology |
-|---|---|
-| Language | Python 3.11+ |
-| UI | Streamlit (1.40+), custom CSS theme |
-| Charts | Plotly |
-| Data processing | pandas, NumPy |
-| HTTP client | httpx |
-| Storage | SQLite (Python's built-in `sqlite3`) |
-| AI model | OpenAI Chat Completions API (default `gpt-4o-mini`) |
-| Config | TOML thresholds file, `.env` via python-dotenv |
-| Tests | pytest |
+- Python 3.11+
+- Streamlit (1.40+) for the UI, with a custom CSS theme
+- Plotly for charts
+- pandas and NumPy for the data work
+- httpx for API calls
+- SQLite for storage
+- OpenAI API (`gpt-4o-mini` by default)
+- pytest for tests
 
----
+## Running it locally
 
-## APIs and data sources
-
-| Source | What it provides | Key needed |
-|---|---|---|
-| [FRED API](https://fred.stlouisfed.org/docs/api/fred/) (St. Louis Fed) | VIX (`VIXCLS`), S&P 500 (`SP500`), high-yield spread (`BAMLH0A0HYM2`), fed funds (`FEDFUNDS`), 10-year and 2-year Treasury yields (`DGS10`, `DGS2`), bank loans (`TOTLL`), bank loans to NDFIs (`LNFACBM027SBOG`), farm loan delinquencies (`DRFAPGACBS`) | Free API key |
-| [SEC EDGAR XBRL API](https://www.sec.gov/edgar/sec-api-documentation) | Debt, operating cash flow and capex from company filings for MSFT, GOOGL, AMZN, META and NVDA | No key, but a contact user agent (name + email) is required |
-| [OFR Hedge Fund Monitor](https://www.financialresearch.gov/hedge-fund-monitor/) | Hedge fund leverage from Form PF data | None |
-| [Federal Reserve Financial Stability Report](https://www.federalreserve.gov/publications/financial-stability-report.htm) | Report text used as context for the AI briefing and assistant | None |
-| [OpenAI API](https://platform.openai.com/docs/api-reference/chat) | AI briefing, research assistant and stress test explanations | API key |
-
----
-
-## Getting started
-
-### 1. Clone and install
+Clone it and install the requirements:
 
 ```bash
 git clone https://github.com/<your-username>/riskradar_ai.git
 cd riskradar_ai
 python -m venv .venv
-source .venv/bin/activate        # Windows: .venv\Scripts\activate
+source .venv/bin/activate        # on Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-### 2. Add your keys
+Make your `.env` file from the example:
 
 ```bash
-cp .env.example .env             # Windows: copy .env.example .env
+cp .env.example .env             # on Windows: copy .env.example .env
 ```
 
-Open `.env` and fill in:
+Then open it and add your keys:
 
 ```
 OPENAI_API_KEY=sk-...
@@ -112,84 +104,64 @@ FRED_API_KEY=your32characterlowercasefredkey
 SEC_USER_AGENT=Your Name your.email@example.com
 ```
 
-- **FRED key**: free at [fredaccount.stlouisfed.org/apikeys](https://fredaccount.stlouisfed.org/apikeys). It's 32 lowercase letters and digits. Use no quotes or spaces.
-- **SEC user agent**: your real name and email. The SEC requires it for fair access.
-- **OpenAI key**: from [platform.openai.com](https://platform.openai.com/api-keys).
+You can get a FRED key for free at [fredaccount.stlouisfed.org/apikeys](https://fredaccount.stlouisfed.org/apikeys). It's 32 lowercase letters and numbers, so don't wrap it in quotes. For the SEC one, just put your real name and email. The OpenAI key comes from [platform.openai.com](https://platform.openai.com/api-keys).
 
-Optional settings:
-
-| Variable | Default | Purpose |
-|---|---|---|
-| `OPENAI_MODEL` | `gpt-4o-mini` | Model used for AI features |
-| `OPENAI_BASE_URL` | OpenAI | Any OpenAI-compatible endpoint |
-| `RISKRADAR_REFRESH_HOURS` | `6` | Reload data on page open when older than this |
-| `OFR_LEVERAGE_MNEMONIC` | auto | Pin a specific OFR leverage series |
-| `RISKRADAR_DB` | `riskradar.db` | SQLite database path |
-
-### 3. Run
+Start the app:
 
 ```bash
 streamlit run app.py
 ```
 
-The app opens at http://localhost:8501. The first load takes about a minute while it pulls data; after that it opens instantly. Check **Data & method → Connections** to confirm every source shows green.
+It opens at http://localhost:8501. The first load takes about a minute because it's pulling everything. After that it's quick. If something isn't loading, check the Data & method tab to see which source has a problem.
 
-### 4. Run the tests
+To run the tests:
 
 ```bash
 pytest
 ```
 
----
+A few optional settings you can add to `.env`:
 
-## Project structure
+| Variable | Default | What it does |
+|---|---|---|
+| `OPENAI_MODEL` | `gpt-4o-mini` | Which model to use |
+| `OPENAI_BASE_URL` | OpenAI | Point it at any OpenAI-compatible API |
+| `RISKRADAR_REFRESH_HOURS` | `6` | How old the data can get before it reloads |
+| `OFR_LEVERAGE_MNEMONIC` | auto | Pin a specific OFR leverage series |
+| `RISKRADAR_DB` | `riskradar.db` | Where the database file goes |
+
+## Project layout
 
 ```
 riskradar_ai/
-├── app.py                    # Streamlit UI
-├── config/thresholds.toml    # Indicators, FRED series IDs and all thresholds
+├── app.py                    # the Streamlit app
+├── config/thresholds.toml    # indicators, series IDs and thresholds
 ├── riskradar/
-│   ├── calc.py               # Deterministic calculations (changes, YoY, percentiles, drawdowns, ratios)
-│   ├── engine.py             # Rule evaluation, classification and alerts
-│   ├── stress.py             # Hypothetical stress test scenarios
+│   ├── calc.py               # all the calculations
+│   ├── engine.py             # applies thresholds, creates alerts
+│   ├── stress.py             # stress test scenarios
 │   ├── fred.py               # FRED client
 │   ├── edgar.py              # SEC EDGAR client
-│   ├── ofr.py                # OFR Hedge Fund Monitor client
-│   ├── fedreports.py         # Fed Financial Stability Report fetching and excerpt selection
-│   ├── llm.py                # OpenAI client, evidence builder, citation and number guards
-│   ├── pipeline.py           # Refresh and build glue
-│   ├── db.py                 # SQLite persistence
-│   └── ui.py                 # Theme, styling and visual components
-├── tests/                    # Unit tests
-├── .streamlit/config.toml    # Streamlit theme
+│   ├── ofr.py                # OFR client
+│   ├── fedreports.py         # pulls Fed report text
+│   ├── llm.py                # OpenAI calls and the answer checks
+│   ├── pipeline.py           # ties fetching and storage together
+│   ├── db.py                 # SQLite
+│   └── ui.py                 # styling and UI pieces
+├── tests/
+├── .streamlit/config.toml    # theme
 ├── requirements.txt
 └── .env.example
 ```
 
----
-
-## How it works
-
-1. **Collect**: each source refreshes independently, so one failure never blocks the others. Results are stored in SQLite.
-2. **Calculate**: all metrics (changes, year-over-year growth, percentiles, drawdowns, capex-to-cash-flow ratios) are computed in Python.
-3. **Classify**: each indicator is graded Normal, Elevated or High against its own thresholds in `config/thresholds.toml`. The worst triggered rule wins.
-4. **Explain**: the AI receives only the calculated metrics, alerts and report excerpts, each tagged with an ID it must cite. The app then checks the answer for unknown citations and unsupported numbers.
-
-## Design principles
-
-- **No fabricated data**: missing data is shown as unavailable and never filled in.
-- **No composite score**: each indicator stands on its own, configurable thresholds.
-- **The AI interprets; it never calculates.**
-- **Fair access**: SEC requests carry your user agent and are throttled well under 10 requests per second.
-
 ## Known limitations
 
-- Thresholds are illustrative defaults, not calibrated risk levels. Edit `config/thresholds.toml` to suit your research.
-- Since April 2026, FRED provides only about 3 years of high-yield spread history and about 10 years of S&P 500 history, so percentile and drawdown windows are shorter.
-- Several series are monthly or quarterly and lag; always check the observation date.
-- XBRL debt and capex definitions vary by company; the tags used are shown on each indicator.
-- Fed report fetching parses HTML pages. If the layout changes, paste an excerpt under **Data & method**.
+- The thresholds are my own starting points, not calibrated risk levels. Change them in `config/thresholds.toml` if you want.
+- Since April 2026 FRED only gives about 3 years of high yield spread history and about 10 years of S&P 500 history, so some percentile and drawdown calculations work on shorter windows.
+- A lot of these series are monthly or quarterly, so they lag. Always check the date on the card.
+- Companies tag debt and capex differently in their filings, so the numbers aren't perfectly comparable across companies. The tags used are shown on each card.
+- The Fed report fetcher reads the HTML pages. If the Fed changes their site layout it might break, in which case you can paste an excerpt manually in the Data & method tab.
 
 ## Disclaimer
 
-RiskRadar AI is a research tool. Nothing in it is investment advice, a forecast or a validated financial risk rating.
+This is a personal research project. Nothing in it is investment advice, a forecast or an official risk rating.
